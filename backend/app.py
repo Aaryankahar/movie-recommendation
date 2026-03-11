@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 
-movies = pd.read_csv("movies.csv")
-tags = pd.read_csv("tags.csv")
+movies = pd.read_csv("backend/movies.csv")
+tags = pd.read_csv("backend/tags.csv")
 
 tags_grouped = tags.groupby('movieId')['tag'].apply(lambda x: ','.join(x)).reset_index()
 movies = movies.merge(tags_grouped, on='movieId', how='left')
