@@ -15,9 +15,23 @@ movies['tag'] = movies['tag'].fillna('')
 
 
 movies['combined_features'] = movies['tag'] + " " + movies['genres']
+def recommend_movies(title):
+    matches = [m for m in indices.index if title.lower() in m.lower()]
 
-tfid = TfidfVectorizer(stop_words='english')
-tfid_matrix = tfid.fit_transform(movies['combined_features'])
+    if not matches:
+        return ["Movie not found"]
+
+    idx = indices[matches[0]]
+
+    tfid_matrix = tfid.fit_transform(movies['combined_features'])
+    cosine_sim = cosine_similarity(tfid_matrix[idx], tfid_matrix)
+
+    sim_scores = list(enumerate(cosine_sim[0]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:11]
+
+    movie_indices = [i[0] for i in sim_scores]
+
+    return movies['title'].iloc[movie_indices].tolist()
 
 cosine_sim = cosine_similarity(tfid_matrix, tfid_matrix)
 
