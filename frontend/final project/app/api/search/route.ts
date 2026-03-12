@@ -7,10 +7,22 @@ const OMDB_API_URL = 'https://www.omdbapi.com/';
 // Parse MovieLens title format: "Title (YYYY)" -> { title: "Title", year: "YYYY" }
 function parseMovieLensTitle(fullTitle: string) {
   const match = fullTitle.match(/^(.+?)\s\((\d{4})\)$/);
-  if (match) {
-    return { title: match[1].trim(), year: match[2] };
+
+  if (!match) return { title: fullTitle, year: '' };
+
+  let title = match[1].trim();
+  const year = match[2];
+
+  // Fix MovieLens title format
+  if (title.endsWith(", The")) {
+    title = "The " + title.replace(", The", "");
+  } else if (title.endsWith(", A")) {
+    title = "A " + title.replace(", A", "");
+  } else if (title.endsWith(", An")) {
+    title = "An " + title.replace(", An", "");
   }
-  return { title: fullTitle, year: '' };
+
+  return { title, year };
 }
 
 // Fetch movie details from OMDb with title and year
