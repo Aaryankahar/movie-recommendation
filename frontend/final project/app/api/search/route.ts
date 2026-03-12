@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const FASTAPI_URL = 'https://movie-recommendation-api-pc9g.onrender.com';
-const OMDB_API_KEY = '91302802';
+const FASTAPI_URL = process.env.FASTAPI_URL || 'https://movie-recommendation-api-pc9g.onrender.com';
+const OMDB_API_KEY = process.env.OMDB_API_KEY || '91302802';
 const OMDB_API_URL = 'https://www.omdbapi.com/';
 
 // Parse MovieLens title format: "Title (YYYY)" -> { title: "Title", year: "YYYY" }
@@ -62,17 +62,59 @@ export async function GET(request: NextRequest) {
 
   try {
     // Step 1: Get recommendations from ML backend
+    console.log(`[v0] Calling FastAPI at: ${FASTAPI_URL}/recommend?movie=${query}`);
+    
     const recommendResponse = await fetch(
-      `${FASTAPI_URL}/recommend?movie=${encodeURIComponent(query)}`
+      `${FASTAPI_URL}/recommend?movie=${encodeURIComponent(query)}`,
+      { 
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'Accept': 'application/json',
+        }
+      }
     );
 
+    console.log(`[v0] FastAPI response status: ${recommendResponse.status}`);
+    
     if (!recommendResponse.ok) {
-      console.error(`FastAPI error: ${recommendResponse.status} ${recommendResponse.statusText}`);
-      return NextResponse.json({ movies: [] });
+      const errorBody = await recommendResponse.text();
+      console.error(`[v0] FastAPI error: ${recommendResponse.status} ${recommendResponse.statusText}`);
+      console.error(`[v0] Response body:`, errorBody);
+      
+      // Check if it's a 404 - likely endpoint doesn't exist
+      if (recommendResponse.status === 404) {
+        return NextResponse.json(
+          { 
+            error: 'FastAPI backend /recommend endpoint not found. Please verify the FastAPI server is running and the endpoint exists.',
+            movies: [],
+            debugInfo: `Tried: ${FASTAPI_URL}/recommend?movie=${query}`
+          },
+          { status: 200 }
+        );
+      }
+      
+      // For other errors, return them
+      return NextResponse.json(
+        { 
+          error: `FastAPI error: ${recommendResponse.status} ${recommendResponse.statusText}`,
+          movies: [] 
+        },
+        { status: 200 }
+      );
     }
 
     const recommendData = await recommendResponse.json();
+    console.log(`[v0] FastAPI response data:`, recommendData);
+    
     const recommendedTitles = recommendData.recommendations || [];
+
+    if (recommendedTitles.length === 0) {
+      console.log(`[v0] No recommendations returned from FastAPI for: ${query}`);
+      return NextResponse.json({ 
+        movies: [],
+        message: 'No recommendations found for this movie'
+      });
+    }
 
     // Step 2: Fetch OMDb details asynchronously for all recommendations
     const moviePromises = recommendedTitles.map(async (fullTitle: string) => {
@@ -95,14 +137,18 @@ export async function GET(request: NextRequest) {
     });
 
     const results = await Promise.all(moviePromises);
-    const movies = results.filter((movie): movie is NonNullable<typeof movie> => movie !== null);
+    const movies = results.filter((movie) => movie !== null);
 
+    console.log(`[v0] Successfully fetched ${movies.length} movies with posters`);
     return NextResponse.json({ movies });
   } catch (error) {
-    console.error('Search error:', error);
+    console.error(`[v0] Search error:`, error);
     return NextResponse.json(
-      { error: 'Failed to get recommendations' },
-      { status: 500 }
+      { 
+        error: `Failed to get recommendations: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        movies: [] 
+      },
+      { status: 200 }
     );
   }
 }
