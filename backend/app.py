@@ -33,7 +33,7 @@ def recommend_movies(title):
 
     return movies['title'].iloc[movie_indices].tolist()
 
-cosine_sim = cosine_similarity(tfid_matrix, tfid_matrix)
+
 
 indices = pd.Series(movies.index, index=movies['title']).drop_duplicates()
 
