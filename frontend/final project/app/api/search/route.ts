@@ -38,12 +38,17 @@ async function fetchOmdbMovie(title: string, year: string) {
   }
 }
 
-export async function GET(request: NextRequest) {
-  const query = request.nextUrl.searchParams.get('q');
+const rawQuery = request.nextUrl.searchParams.get('q');
 
-  if (!query) {
-    return NextResponse.json({ movies: [] });
-  }
+if (!rawQuery) {
+  return NextResponse.json({ movies: [] });
+}
+
+// capitalize words: "toy story" -> "Toy Story"
+const query = rawQuery
+  .split(" ")
+  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+  .join(" ");
 
   try {
     // Step 1: get recommendations from FastAPI
