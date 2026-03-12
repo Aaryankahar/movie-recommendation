@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
     });
 
     const results = await Promise.all(moviePromises);
-    const movies = results.filter((movie) => movie !== null);
+    const movies = results.filter((movie): movie is NonNullable<typeof movie> => movie !== null);
 
     return NextResponse.json({ movies });
   } catch (error) {
