@@ -4,7 +4,7 @@ const FASTAPI_URL = 'https://movie-recommendation-api-pc9g.onrender.com';
 const OMDB_API_KEY = '91302802';
 const OMDB_API_URL = 'https://www.omdbapi.com/';
 
-// Parse MovieLens title format: "Title (YYYY)" -> { title: "Title", year: "YYYY" }
+// Convert MovieLens format -> normal title
 function parseMovieLensTitle(fullTitle: string) {
   const match = fullTitle.match(/^(.+?)\s\((\d{4})\)$/);
 
@@ -13,116 +13,79 @@ function parseMovieLensTitle(fullTitle: string) {
   let title = match[1].trim();
   const year = match[2];
 
-  // Fix MovieLens title format
-  if (title.endsWith(", The")) {
-    title = "The " + title.replace(", The", "");
-  } else if (title.endsWith(", A")) {
-    title = "A " + title.replace(", A", "");
-  } else if (title.endsWith(", An")) {
-    title = "An " + title.replace(", An", "");
-  }
+  if (title.endsWith(", The")) title = "The " + title.replace(", The", "");
+  if (title.endsWith(", A")) title = "A " + title.replace(", A", "");
+  if (title.endsWith(", An")) title = "An " + title.replace(", An", "");
 
   return { title, year };
 }
 
-// Fetch movie details from OMDb with title and year
 async function fetchOmdbMovie(title: string, year: string) {
   try {
-    // First try with year for more accurate results
-    if (year) {
-      const response = await fetch(
-        `${OMDB_API_URL}?t=${encodeURIComponent(title)}&y=${year}&apikey=${OMDB_API_KEY}`
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.Response === 'True' && data.Poster && data.Poster !== 'N/A') {
-          return data;
-        }
-      }
-    }
-
-    // Fallback: try without year
     const response = await fetch(
-      `${OMDB_API_URL}?t=${encodeURIComponent(title)}&apikey=${OMDB_API_KEY}`
+      `${OMDB_API_URL}?t=${encodeURIComponent(title)}&y=${year}&apikey=${OMDB_API_KEY}`
     );
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.Response === 'True') {
-        return data;
-      }
-    }
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    if (data.Response === "True") return data;
 
     return null;
-  } catch (error) {
-    console.error(`Error fetching OMDb for "${title} (${year})":`, error);
+  } catch {
     return null;
   }
 }
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const query = searchParams.get('q');
+  const query = request.nextUrl.searchParams.get('q');
 
-  if (!query || query.trim().length === 0) {
-    return NextResponse.json(
-      { error: 'Search query is required' },
-      { status: 400 }
-    );
+  if (!query) {
+    return NextResponse.json({ movies: [] });
   }
 
   try {
-    // Step 1: Get recommendations from ML backend
-    const recommendResponse = await fetch(
+    // Step 1: get recommendations from FastAPI
+    const res = await fetch(
       `${FASTAPI_URL}/recommend?movie=${encodeURIComponent(query)}`
     );
 
-    if (!recommendResponse.ok) {
-      console.error(`FastAPI error: ${recommendResponse.status} ${recommendResponse.statusText}`);
-      return NextResponse.json({ movies: [] });
-    }
+    const data = await res.json();
 
-    const recommendData = await recommendResponse.json();
-    const recommendedTitles = recommendData.recommendations || [];
+    const titles: string[] = data.recommendations || [];
 
-    // Step 2: Fetch OMDb details asynchronously for all recommendations
-    const moviePromises = recommendedTitles.map(async (fullTitle: string) => {
-      const { title, year } = parseMovieLensTitle(fullTitle);
-      const omdbData = await fetchOmdbMovie(title, year);
+    // Step 2: enrich with OMDb
+    const movies = await Promise.all(
+      titles.map(async (fullTitle) => {
+        const { title, year } = parseMovieLensTitle(fullTitle);
 
-if (omdbData) {
-  return {
-    id: omdbData.imdbID,
-    title: omdbData.Title,
-    year: omdbData.Year,
-    rating: omdbData.imdbRating,
-    poster:
-      omdbData.Poster && omdbData.Poster !== 'N/A'
-        ? omdbData.Poster.replace(/^http:/, 'https:')
-        : null,
-  };
-}
+        const omdb = await fetchOmdbMovie(title, year);
 
-// fallback if OMDb fails
-return {
-  id: fullTitle,
-  title: title,
-  year: year,
-  rating: '',
-  poster: null,
-};
-    });
+        if (omdb) {
+          return {
+            id: omdb.imdbID,
+            title: omdb.Title,
+            year: omdb.Year,
+            rating: omdb.imdbRating,
+            poster: omdb.Poster !== 'N/A' ? omdb.Poster : null
+          };
+        }
 
-    const results = await Promise.all(moviePromises);
-    const movies = results;
+        // fallback if OMDb fails
+        return {
+          id: fullTitle,
+          title: title,
+          year: year,
+          rating: '',
+          poster: null
+        };
+      })
+    );
 
     return NextResponse.json({ movies });
-  } catch (error) {
-    console.error('Search error:', error);
-    return NextResponse.json(
-      { error: 'Failed to get recommendations' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ movies: [] });
   }
 }
