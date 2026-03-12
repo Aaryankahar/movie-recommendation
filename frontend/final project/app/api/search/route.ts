@@ -79,23 +79,31 @@ export async function GET(request: NextRequest) {
       const { title, year } = parseMovieLensTitle(fullTitle);
       const omdbData = await fetchOmdbMovie(title, year);
 
-      if (omdbData) {
-        return {
-          id: omdbData.imdbID,
-          title: omdbData.Title,
-          year: omdbData.Year,
-          rating: omdbData.imdbRating,
-          poster:
-            omdbData.Poster && omdbData.Poster !== 'N/A'
-              ? omdbData.Poster.replace(/^http:/, 'https:')
-              : null,
-        };
-      }
-      return null;
+if (omdbData) {
+  return {
+    id: omdbData.imdbID,
+    title: omdbData.Title,
+    year: omdbData.Year,
+    rating: omdbData.imdbRating,
+    poster:
+      omdbData.Poster && omdbData.Poster !== 'N/A'
+        ? omdbData.Poster.replace(/^http:/, 'https:')
+        : null,
+  };
+}
+
+// fallback if OMDb fails
+return {
+  id: fullTitle,
+  title: title,
+  year: year,
+  rating: '',
+  poster: null,
+};
     });
 
     const results = await Promise.all(moviePromises);
-    const movies = results.filter((movie) => movie !== null);
+    const movies = results;
 
     return NextResponse.json({ movies });
   } catch (error) {
